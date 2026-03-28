@@ -4,6 +4,8 @@ import type { ExtractionProvider, ProviderExtractionBundle } from "@/providers/t
 import type { AnalyzeRequest, SourcePlan } from "@/schemas";
 
 const TINYFISH_ENDPOINT = "https://mino.ai/v1/automation/run-sse";
+const DEFAULT_TINYFISH_TIMEOUT_MS = 180_000;
+const DEFAULT_TINYFISH_INACTIVITY_TIMEOUT_MS = 45_000;
 
 type TinyFishResult = {
   productName?: string;
@@ -227,9 +229,37 @@ async function runTinyFishAutomation(
   apiKey: string
 ): Promise<TinyFishResult> {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 45_000);
+  const overallTimeoutMs = Number(
+    process.env.SIGNALSKIN_TINYFISH_TIMEOUT_MS ?? DEFAULT_TINYFISH_TIMEOUT_MS
+  );
+  const inactivityTimeoutMs = Number(
+    process.env.SIGNALSKIN_TINYFISH_INACTIVITY_TIMEOUT_MS ??
+      DEFAULT_TINYFISH_INACTIVITY_TIMEOUT_MS
+  );
+  let abortReason = "TinyFish request was aborted.";
+  const overallTimeout = setTimeout(() => {
+    abortReason = `TinyFish exceeded the ${Math.round(
+      overallTimeoutMs / 1000
+    )}s overall timeout.`;
+    controller.abort();
+  }, overallTimeoutMs);
+  let inactivityTimeout: ReturnType<typeof setTimeout> | undefined;
+  const resetInactivityTimeout = () => {
+    if (inactivityTimeout) {
+      clearTimeout(inactivityTimeout);
+    }
+
+    inactivityTimeout = setTimeout(() => {
+      abortReason = `TinyFish stream went quiet for ${Math.round(
+        inactivityTimeoutMs / 1000
+      )}s.`;
+      controller.abort();
+    }, inactivityTimeoutMs);
+  };
 
   try {
+    resetInactivityTimeout();
+
     const response = await fetch(TINYFISH_ENDPOINT, {
       method: "POST",
       headers: {
@@ -243,6 +273,7 @@ async function runTinyFishAutomation(
       }),
       signal: controller.signal
     });
+    resetInactivityTimeout();
 
     if (!response.ok) {
       throw new Error(`TinyFish returned HTTP ${response.status}.`);
@@ -262,6 +293,8 @@ async function runTinyFishAutomation(
       if (done) {
         break;
       }
+
+      resetInactivityTimeout();
 
       buffer += decoder.decode(value, { stream: true });
       const lines = buffer.split("\n");
@@ -300,8 +333,20 @@ async function runTinyFishAutomation(
     }
 
     throw new Error("TinyFish stream ended before a COMPLETE event.");
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      (error.name === "AbortError" || error.message === "This operation was aborted")
+    ) {
+      throw new Error(abortReason);
+    }
+
+    throw error;
   } finally {
-    clearTimeout(timeout);
+    clearTimeout(overallTimeout);
+    if (inactivityTimeout) {
+      clearTimeout(inactivityTimeout);
+    }
   }
 }
 
