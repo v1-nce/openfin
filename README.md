@@ -1,19 +1,3 @@
-<<<<<<< HEAD
-# OpenFin
-
-Monorepo template with:
-
-- `openfin-backend`: FastAPI backend scaffolded for Render
-- `openfin-frontend`: Next.js frontend scaffolded for Vercel
-
-## Structure
-
-```text
-openfin/
-  openfin-backend/
-  openfin-frontend/
-```
-=======
 # SignalSkin
 
 SignalSkin is an autonomous cosmetic intelligence agent built for a TinyFish x OpenAI hackathon.
@@ -362,4 +346,3 @@ Files:
 - Add lightweight persistence for saved profiles and product history.
 - Expand fixture coverage for sparse-evidence and multi-market pricing cases.
 - Add compare-two-products and watchlist flows as stretch features.
->>>>>>> vibhas_tool
