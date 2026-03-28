@@ -266,6 +266,14 @@ Key variables:
 - `SIGNALSKIN_USE_MOCK_PROVIDER`
 - `TINYFISH_API_KEY`
 - `OPENAI_API_KEY`
+- `SIGNALSKIN_TINYFISH_PRODUCT_TIMEOUT_MS`
+- `SIGNALSKIN_TINYFISH_PRODUCT_INACTIVITY_TIMEOUT_MS`
+- `SIGNALSKIN_TINYFISH_SUPPORT_TIMEOUT_MS`
+- `SIGNALSKIN_TINYFISH_SUPPORT_INACTIVITY_TIMEOUT_MS`
+
+If the pass-specific TinyFish timeout variables are unset, SignalSkin falls back to the generic live-web timeout settings:
+- `SIGNALSKIN_TINYFISH_TIMEOUT_MS`
+- `SIGNALSKIN_TINYFISH_INACTIVITY_TIMEOUT_MS`
 
 ---
 
@@ -325,7 +333,7 @@ Files:
 
 ## Known limitations
 
-- Live TinyFish extraction currently focuses on product-fact extraction first; review/editorial/social live layers are still partial.
+- Live TinyFish extraction now runs bounded parallel specialist passes and streams partial results into the UI; when time budgets are hit it returns partial live evidence instead of seeded mock data, but direct product URLs still outperform search-first mode on messy sites.
 - Persistence is currently fixture-backed and request-scoped, not database-backed.
 - Source coverage is seeded for demo reliability rather than broadly live-web complete.
 - Scoring is intentionally heuristic and inspectable, not ML-personalized.
@@ -334,7 +342,7 @@ Files:
 
 ## Next best improvements
 
-- Wire a real TinyFish adapter for search, navigation, review expansion, and seller extraction.
+- Improve live TinyFish depth for tougher JavaScript-heavy sites and richer alternative discovery.
 - Add lightweight persistence for saved profiles and product history.
 - Expand fixture coverage for sparse-evidence and multi-market pricing cases.
 - Add compare-two-products and watchlist flows as stretch features.

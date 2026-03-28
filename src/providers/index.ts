@@ -1,6 +1,10 @@
 import { MockProvider } from "@/providers/mock/provider";
 import { TinyFishProvider } from "@/providers/tinyfish/provider";
-import type { ExtractionProvider, ProviderExtractionBundle } from "@/providers/types";
+import type {
+  ExtractionProvider,
+  ProviderExtractionBundle,
+  ProviderUpdate
+} from "@/providers/types";
 import type { AnalyzeRequest, SourcePlan } from "@/schemas";
 
 export function getProvider(request: AnalyzeRequest): ExtractionProvider {
@@ -17,6 +21,22 @@ export async function runProviderExtraction(
 ): Promise<ProviderExtractionBundle & { providerName: string }> {
   const provider = getProvider(request);
   const result = await provider.extract(request, plan);
+
+  return {
+    ...result,
+    providerName: provider.name
+  };
+}
+
+export async function runProviderExtractionWithUpdates(
+  request: AnalyzeRequest,
+  plan: SourcePlan,
+  onUpdate: (update: ProviderUpdate) => void
+): Promise<ProviderExtractionBundle & { providerName: string }> {
+  const provider = getProvider(request);
+  const result = provider.extractWithUpdates
+    ? await provider.extractWithUpdates(request, plan, onUpdate)
+    : await provider.extract(request, plan);
 
   return {
     ...result,

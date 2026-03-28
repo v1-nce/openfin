@@ -79,13 +79,25 @@ export async function analyzeProduct(
   const request = AnalyzeRequestSchema.parse(requestInput);
   const sourcePlan = buildSourcePlan(request);
   const extraction = await runProviderExtraction(request, sourcePlan);
+  return assembleProductReport({
+    request,
+    extraction
+  });
+}
+
+export function assembleProductReport(options: {
+  request: AnalyzeRequest;
+  extraction: Awaited<ReturnType<typeof runProviderExtraction>>;
+}): ProductReport {
+  const sourcePlan = buildSourcePlan(options.request);
+  const extraction = options.extraction;
   const ingredientAnalysis = analyzeIngredients(
     extraction.ingredientList,
-    request.userProfile
+    options.request.userProfile
   );
   const fitAssessment = assessPersonalFit(
     extraction.product,
-    request.userProfile,
+    options.request.userProfile,
     ingredientAnalysis.flags
   );
   const sentimentThemes = synthesizeSentimentThemes(
@@ -103,10 +115,10 @@ export async function analyzeProduct(
   const sellerRankings = rankSellerOffers(extraction.sellerOffers);
   const alternatives = recommendAlternatives(
     extraction.alternativeCandidates,
-    request.userProfile
+    options.request.userProfile
   );
   const scored = scoreRecommendation({
-    userProfile: request.userProfile,
+    userProfile: options.request.userProfile,
     fitAssessment,
     ingredientFlags: ingredientAnalysis.flags,
     sentimentThemes,
@@ -115,7 +127,7 @@ export async function analyzeProduct(
   });
 
   const provisionalReport = {
-    request,
+    request: options.request,
     sourcePlan: {
       ...sourcePlan,
       warnings: [...sourcePlan.warnings, ...extraction.warnings],

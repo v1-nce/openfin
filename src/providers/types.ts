@@ -1,4 +1,5 @@
 import type {
+  AnalysisPreview,
   AlternativeCandidate,
   AnalyzeRequest,
   NormalizedEditorialSignal,
@@ -23,11 +24,31 @@ export type ProviderExtractionBundle = {
   usedFallback: boolean;
 };
 
+export type ProviderUpdate =
+  | {
+      type: "status";
+      phase: "product" | "support" | "fallback";
+      status: "running" | "completed" | "failed";
+      detail: string;
+      preview?: AnalysisPreview;
+    }
+  | {
+      type: "preview";
+      phase: "product" | "support" | "fallback";
+      detail?: string;
+      preview: AnalysisPreview;
+    };
+
 export interface ExtractionProvider {
   readonly name: string;
   readonly supportsLive: boolean;
   extract(
     request: AnalyzeRequest,
     plan: SourcePlan
+  ): Promise<ProviderExtractionBundle>;
+  extractWithUpdates?(
+    request: AnalyzeRequest,
+    plan: SourcePlan,
+    onUpdate: (update: ProviderUpdate) => void
   ): Promise<ProviderExtractionBundle>;
 }

@@ -2,9 +2,20 @@ import { ANALYSIS_STAGE_LABELS, SOURCE_TYPE_LABELS } from "@/lib/constants";
 import type {
   AnalyzeRequest,
   ProgressStep,
+  ProgressStage,
   SourcePlan,
   SourceType
 } from "@/schemas";
+
+export const ANALYSIS_STAGE_ORDER: ProgressStage[] = [
+  "validate",
+  "plan",
+  "extract",
+  "normalize",
+  "reason",
+  "rank",
+  "assemble"
+];
 
 export function buildSourcePlan(request: AnalyzeRequest): SourcePlan {
   const requestedTypes: SourceType[] = [
@@ -64,19 +75,35 @@ export function buildSourcePlan(request: AnalyzeRequest): SourcePlan {
 }
 
 export function buildCompletedProgress(): ProgressStep[] {
-  const stages = [
-    "validate",
-    "plan",
-    "extract",
-    "normalize",
-    "reason",
-    "rank",
-    "assemble"
-  ] as const;
-
-  return stages.map((stage) => ({
+  return ANALYSIS_STAGE_ORDER.map((stage) => ({
     stage,
     label: ANALYSIS_STAGE_LABELS[stage],
     status: "completed"
   }));
+}
+
+export function buildProgressSnapshot(options?: {
+  runningStage?: ProgressStage;
+  completedStages?: ProgressStage[];
+  failedStage?: ProgressStage;
+  detailByStage?: Partial<Record<ProgressStage, string>>;
+}): ProgressStep[] {
+  const completed = new Set(options?.completedStages ?? []);
+
+  return ANALYSIS_STAGE_ORDER.map((stage) => {
+    const status = options?.failedStage === stage
+      ? "failed"
+      : completed.has(stage)
+        ? "completed"
+        : options?.runningStage === stage
+          ? "running"
+          : "pending";
+
+    return {
+      stage,
+      label: ANALYSIS_STAGE_LABELS[stage],
+      status,
+      detail: options?.detailByStage?.[stage]
+    };
+  });
 }

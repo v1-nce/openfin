@@ -1,5 +1,6 @@
 import { ANALYSIS_STAGE_LABELS } from "@/lib/constants";
-import type { ProgressStage } from "@/schemas";
+import { formatSourceTypeLabel } from "@/lib/format";
+import type { AnalysisPreview, ProgressStep, ProgressStage } from "@/schemas";
 
 const STAGE_ORDER: ProgressStage[] = [
   "validate",
@@ -12,11 +13,15 @@ const STAGE_ORDER: ProgressStage[] = [
 ];
 
 export function ProgressPanel({
-  activeIndex,
-  isLoading
+  progress,
+  isLoading,
+  detail,
+  preview
 }: {
-  activeIndex: number;
+  progress: ProgressStep[];
   isLoading: boolean;
+  detail?: string;
+  preview?: AnalysisPreview | null;
 }) {
   return (
     <div className="panel p-5 md:p-6">
@@ -35,13 +40,14 @@ export function ProgressPanel({
       </div>
 
       <div className="mt-5 space-y-3">
-        {STAGE_ORDER.map((stage, index) => {
-          const status =
-            index < activeIndex
-              ? "completed"
-              : index === activeIndex && isLoading
-                ? "running"
-                : "pending";
+        {STAGE_ORDER.map((stage) => {
+          const step =
+            progress.find((item) => item.stage === stage) ?? {
+              stage,
+              label: ANALYSIS_STAGE_LABELS[stage],
+              status: "pending" as const
+            };
+          const status = step.status;
 
           return (
             <div
@@ -54,6 +60,8 @@ export function ProgressPanel({
                     ? "bg-moss"
                     : status === "running"
                       ? "bg-coral animate-pulse"
+                      : status === "failed"
+                        ? "bg-coral"
                       : "bg-slate/30"
                 }`}
               />
@@ -65,8 +73,10 @@ export function ProgressPanel({
                   {status === "completed"
                     ? "Finished"
                     : status === "running"
-                      ? "In progress"
-                      : "Waiting"}
+                      ? step.detail ?? "In progress"
+                      : status === "failed"
+                        ? step.detail ?? "Failed"
+                        : "Waiting"}
                 </p>
               </div>
             </div>
@@ -74,9 +84,45 @@ export function ProgressPanel({
         })}
       </div>
 
-      <p className="mt-5 text-sm text-slate">
-        The UI advances through staged progress locally, but each analysis run still sends only one API request to avoid unnecessary endpoint churn.
-      </p>
+      {detail ? <p className="mt-5 text-sm text-slate">{detail}</p> : null}
+
+      {preview ? (
+        <div className="mt-5 space-y-3 rounded-3xl border border-slate/10 bg-white/65 p-4">
+          <div className="flex flex-wrap gap-2">
+            {preview.coveredSourceTypes.map((type) => (
+              <span key={type} className="chip">
+                Live: {formatSourceTypeLabel(type)}
+              </span>
+            ))}
+            {preview.pendingSourceTypes.slice(0, 3).map((type) => (
+              <span
+                key={type}
+                className="chip border-slate/10 bg-white/80 text-slate"
+              >
+                Pending: {formatSourceTypeLabel(type)}
+              </span>
+            ))}
+          </div>
+          <p className="text-sm text-slate">
+            {preview.evidenceCount} evidence snippets collected so far
+            {preview.sellerOfferCount
+              ? ` · ${preview.sellerOfferCount} seller options found`
+              : ""}
+            {preview.ingredientCount
+              ? ` · ${preview.ingredientCount} ingredients parsed`
+              : ""}
+          </p>
+          {preview.recentActivity.length ? (
+            <div className="space-y-2">
+              {preview.recentActivity.slice(0, 4).map((activity) => (
+                <p key={activity} className="text-sm text-slate">
+                  • {activity}
+                </p>
+              ))}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   );
 }

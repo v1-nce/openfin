@@ -1,8 +1,15 @@
 "use client";
 
-import { useDeferredValue, useState, useTransition } from "react";
+import { useState, useTransition } from "react";
 
-import type { ProductReport } from "@/schemas";
+import { ANALYSIS_STAGE_LABELS } from "@/lib/constants";
+import type {
+  AnalysisPreview,
+  AnalysisStreamEvent,
+  ProductReport,
+  ProgressStage,
+  ProgressStep
+} from "@/schemas";
 import {
   AnalysisForm,
   formStateFromRequest,
@@ -10,11 +17,26 @@ import {
   type AnalysisFormState,
   type DemoCaseSummary
 } from "@/components/analysis-form";
+import { LiveAnalysisPreview } from "@/components/live-analysis-preview";
 import { ProgressPanel } from "@/components/progress-panel";
 import { ReportView } from "@/components/report-view";
 import { SectionCard } from "@/components/section-card";
 
-const FINAL_STAGE_INDEX = 6;
+const INITIAL_PROGRESS: ProgressStep[] = (
+  [
+    "validate",
+    "plan",
+    "extract",
+    "normalize",
+    "reason",
+    "rank",
+    "assemble"
+  ] as ProgressStage[]
+).map((stage) => ({
+  stage,
+  label: ANALYSIS_STAGE_LABELS[stage],
+  status: "pending"
+}));
 
 export function SignalSkinApp({
   demoCases
@@ -25,10 +47,11 @@ export function SignalSkinApp({
     formStateFromRequest(demoCases[0].request)
   );
   const [report, setReport] = useState<ProductReport | null>(null);
+  const [preview, setPreview] = useState<AnalysisPreview | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [activeStageIndex, setActiveStageIndex] = useState(0);
-  const deferredStageIndex = useDeferredValue(activeStageIndex);
+  const [progress, setProgress] = useState<ProgressStep[]>(INITIAL_PROGRESS);
+  const [progressDetail, setProgressDetail] = useState<string | null>(null);
   const [isTransitionPending, startTransition] = useTransition();
 
   const activeDemoSummary =
@@ -53,38 +76,88 @@ export function SignalSkinApp({
   }
 
   async function runAnalysis(request: DemoCaseSummary["request"] | ReturnType<typeof requestFromForm>) {
-    let timer: number | undefined;
-
     try {
       setError(null);
       setReport(null);
+      setPreview(null);
       setIsLoading(true);
-      setActiveStageIndex(0);
+      setProgress(INITIAL_PROGRESS);
+      setProgressDetail("Submitting the request to SignalSkin.");
 
-      timer = window.setInterval(() => {
-        setActiveStageIndex((current) =>
-          Math.min(current + 1, FINAL_STAGE_INDEX)
-        );
-      }, 550);
-
-      const response = await fetch("/api/analyze", {
+      const response = await fetch("/api/analyze/stream", {
         method: "POST",
         headers: {
-          "Content-Type": "application/json"
+          "Content-Type": "application/json",
+          Accept: "text/event-stream"
         },
         body: JSON.stringify(request)
       });
 
-      const payload = await response.json();
-
       if (!response.ok) {
+        const payload = await response.json();
         throw new Error(payload.error ?? "SignalSkin could not complete the analysis.");
       }
 
-      startTransition(() => {
-        setReport(payload.report as ProductReport);
-        setActiveStageIndex(FINAL_STAGE_INDEX);
-      });
+      if (!response.body) {
+        throw new Error("SignalSkin returned no stream body.");
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let didComplete = false;
+
+      while (true) {
+        const { done, value } = await reader.read();
+
+        if (done) {
+          break;
+        }
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) {
+            continue;
+          }
+
+          const event = JSON.parse(line.slice(6)) as AnalysisStreamEvent;
+
+          if (event.type === "progress") {
+            setProgress(event.progress);
+            setProgressDetail(event.detail ?? null);
+
+            if (event.preview) {
+              const preview = event.preview;
+
+              startTransition(() => {
+                setPreview(preview);
+              });
+            }
+          } else if (event.type === "preview") {
+            const preview = event.preview;
+
+            startTransition(() => {
+              setPreview(preview);
+            });
+          } else if (event.type === "complete") {
+            didComplete = true;
+            startTransition(() => {
+              setReport(event.report);
+              setProgress(event.report.progress);
+              setProgressDetail("SignalSkin finished assembling the report.");
+            });
+          } else if (event.type === "error") {
+            throw new Error(event.error);
+          }
+        }
+      }
+
+      if (!didComplete) {
+        throw new Error("SignalSkin ended the stream before returning a final report.");
+      }
     } catch (runError) {
       setError(
         runError instanceof Error
@@ -92,10 +165,6 @@ export function SignalSkinApp({
           : "SignalSkin could not complete the analysis."
       );
     } finally {
-      if (timer) {
-        window.clearInterval(timer);
-      }
-
       setIsLoading(false);
     }
   }
@@ -206,8 +275,10 @@ export function SignalSkinApp({
 
         <div className="space-y-6">
           <ProgressPanel
-            activeIndex={deferredStageIndex}
+            progress={progress}
             isLoading={isLoading}
+            detail={progressDetail ?? undefined}
+            preview={preview}
           />
 
           {error ? (
@@ -216,10 +287,12 @@ export function SignalSkinApp({
             </SectionCard>
           ) : null}
 
-          {!report && !error ? (
+          {!report && preview ? <LiveAnalysisPreview preview={preview} /> : null}
+
+          {!report && !error && !preview ? (
             <SectionCard title="Report Preview" eyebrow="Ready State">
               <p className="text-sm text-slate">
-                Run a demo case or submit the form to generate the product intelligence report. The MVP uses one request per run, keeps the provider swappable, and falls back to seeded evidence when live extraction is unavailable.
+                Run a demo case or submit the form to generate the product intelligence report. SignalSkin now streams real progress and partial live findings while the final reasoning layer is still assembling.
               </p>
             </SectionCard>
           ) : null}
